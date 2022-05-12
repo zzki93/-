@@ -4,7 +4,7 @@
   "description": "",
   "main": "main.js",
   "scripts": {
-    "dev":"parcel main.js",
+    "dev": "parcel main.js",
     "build": "parcel build index.html"
   },
   "keywords": [],
@@ -12,5 +12,8 @@
   "license": "ISC",
   "devDependencies": {
     "parcel-bundler": "^1.12.5"
+  },
+  "dependencies": {
+    "sanitize-html": "^2.7.0"
   }
 }
