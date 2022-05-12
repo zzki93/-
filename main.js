@@ -48,27 +48,11 @@ var app = http.createServer(function(request,response){
 
         
       }else{
-        
-        // const filterId = path.parse(queryData.get('id')).base
-        // fs.readFile(`data/${filterId}`,'utf8',(err,data) =>{
-        //   fs.readdir('./data',(err,filelist) =>{
-        //     let title = queryData.get('id');
-        //     const cleanTitle = sanitizeHtml(title)
-        //     const cleanData = sanitizeHtml(data)
-        //     let list = template.list(filelist);
-        //     let html = template.html(title,list,
-        //     `<h2>${cleanTitle}</h2>
-        //     <p>${cleanData}</p>`,control(title));
-        //     response.writeHead(200);
-        //     response.end(html);
-        //   })
-        // })
         db.query('select * from topic',(err,topics)=>{
           if(err) throw err
           db.query(`select * from topic where id=?`,[queryData.get('id')],(err2,topic)=>{
             if(err2) throw err2
             const list = template.list(topics);
-            console.log(list)
             const title = topic[0].title;
             const data = topic[0].description;
             const html = template.html(title,list,
@@ -83,10 +67,13 @@ var app = http.createServer(function(request,response){
       }
     
   }else if(pathname === '/create'){
-    fs.readdir('./data',(err,filelist) =>{
-      let title = 'WEB - create'
-      let list = template.list(filelist);
-      let html = template.html(title,list,`
+    db.query('select * from topic',(err,topics)=>{
+      if(err) throw err
+      db.query(`select * from topic where id=?`,[queryData.get('id')],(err2,topic)=>{
+        if(err2) throw err2
+        const title = 'WEB -Create';
+        const list = template.list(topics);
+        const html = template.html(title,list,`
           <form action="http://localhost:1234/create_process" method="post">
           <p><input type='text' name="title" placeholder="title"></p>
           <p>
@@ -95,10 +82,11 @@ var app = http.createServer(function(request,response){
           <p>
             <input type="submit" value="생성">
           </p>
-        </form>
-      `,'');
-      response.writeHead(200);
-      response.end(html);
+          </form>
+           `,'');
+          response.writeHead(200)
+          response.end(html)
+      })
     })
   }else if(pathname === '/create_process'){
     response.writeHead(200);
@@ -107,20 +95,22 @@ var app = http.createServer(function(request,response){
       body += data;
     })
     request.on('end',()=>{
-      let post = new URLSearchParams(body);
+      const post = new URLSearchParams(body);
       console.log(post)
-      let title = post.get('title')
-      let description = post.get('description')
-      const cleanTitle = sanitizeHtml(title)
-      const cleanData = sanitizeHtml(description)
-      fs.writeFile(`./data/${cleanTitle}`, cleanData,"utf8", function (err) {
-        console.log('File is created successfully.');
+      const title = post.get('title')
+      const description = post.get('description')
+      db.query(`
+      insert into topic (title, description, created, author_id)
+       values (?, ?, NOW(), ?)`,
+       [title,description,1],
+       (err,result)=>{
+        if(err) throw err;
+        console.log(result)
         response.writeHead(302,{
-          'Location': encodeURI(`/?id=${cleanTitle}`)
+          'Location': `/?id=${result.insertId}`
         })
         response.end()
-      });
-     
+      })
     });
 
     
@@ -195,11 +185,5 @@ var app = http.createServer(function(request,response){
     response.writeHead(404);
     response.end('not found');
   }
-    
-    // console.log(__dirname + url)
-    
-    // response.end('zzki : ' + url);C:\Users\WR\Desktop\web\lifecode\node
-
- 
 });
 app.listen(1234);
