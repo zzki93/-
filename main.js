@@ -1,18 +1,26 @@
 var http = require('http');
 var fs = require('fs');
-var url = require('url');
-const { title } = require('process');
 const template = require('./lib/template.js');
 const path = require('path');
 const sanitizeHtml = require('sanitize-html')
+const mysql = require('mysql')
+
+const db = mysql.createConnection({
+  host:'localhost',
+  user:'nodejs',
+  password:'1234',
+  database:'opentutorials'
+})
+
+db.connect();
 
 function control(title){
   const cleanTitle = sanitizeHtml(title)
   return `
     <a href="/create">create</a>
-    <a href="/update?id=${cleanTitle}">update</a>
+    <a href="/update?id=${title}">update</a>
     <form action="delete_process" method="post">
-      <input type='hidden' name='title' value='${cleanTitle}'>
+      <input type='hidden' name='title' value='${title}'>
       <input type='submit' value='delete'>
     </form>
     `}
@@ -26,34 +34,51 @@ var app = http.createServer(function(request,response){
     if(pathname ==='/'){
       if (queryData.get('id') ===null){
 
-        fs.readdir('./data',(err,filelist) =>{
-          
+        db.query(`select * from topic`, (err,topics)=>{
           let title = 'Welcome'
           let data = 'hello, node.js';
-          let list = template.list(filelist);
+          let list = template.list(topics);
           let html = template.html(title,list,
-          `<h2>${title}</h2>
-          <p>${data}</p>`
-          ,`<a href="/create">create</a>`);
-          response.writeHead(200);
-          response.end(html);
+              `<h2>${title}</h2>
+              <p>${data}</p>`
+              ,`<a href="/create">create</a>`);
+          response.writeHead(200)
+          response.end(html)
         })
 
         
       }else{
-        const filterId = path.parse(queryData.get('id')).base
-        fs.readFile(`data/${filterId}`,'utf8',(err,data) =>{
-          fs.readdir('./data',(err,filelist) =>{
-            let title = queryData.get('id');
-            const cleanTitle = sanitizeHtml(title)
-            const cleanData = sanitizeHtml(data)
-            let list = template.list(filelist);
-            let html = template.html(title,list,
-            `<h2>${cleanTitle}</h2>
-            <p>${cleanData}</p>`,control(title));
-            response.writeHead(200);
-            response.end(html);
+        
+        // const filterId = path.parse(queryData.get('id')).base
+        // fs.readFile(`data/${filterId}`,'utf8',(err,data) =>{
+        //   fs.readdir('./data',(err,filelist) =>{
+        //     let title = queryData.get('id');
+        //     const cleanTitle = sanitizeHtml(title)
+        //     const cleanData = sanitizeHtml(data)
+        //     let list = template.list(filelist);
+        //     let html = template.html(title,list,
+        //     `<h2>${cleanTitle}</h2>
+        //     <p>${cleanData}</p>`,control(title));
+        //     response.writeHead(200);
+        //     response.end(html);
+        //   })
+        // })
+        db.query('select * from topic',(err,topics)=>{
+          if(err) throw err
+          db.query(`select * from topic where id=?`,[queryData.get('id')],(err2,topic)=>{
+            if(err2) throw err2
+            const list = template.list(topics);
+            console.log(list)
+            const title = topic[0].title;
+            const data = topic[0].description;
+            const html = template.html(title,list,
+              `<h2>${title}</h2>
+              <p>${data}</p>`
+              ,control(title));
+              response.writeHead(200)
+              response.end(html)
           })
+          
         })
       }
     
