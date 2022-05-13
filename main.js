@@ -14,23 +14,22 @@ const db = mysql.createConnection({
 
 db.connect();
 
-function control(title){
-  const cleanTitle = sanitizeHtml(title)
+function control(topic){
   return `
     <a href="/create">create</a>
-    <a href="/update?id=${title}">update</a>
+    <a href="/update?id=${topic[0].id}">update</a>
     <form action="delete_process" method="post">
-      <input type='hidden' name='title' value='${title}'>
+      <input type='hidden' name='title' value='${topic[0].title}'>
       <input type='submit' value='delete'>
     </form>
     `}
 
 
 var app = http.createServer(function(request,response){
-    var _url = request.url;
-    var queryData = new URL('http://localhost:1234'+_url).searchParams
-    let pathname = new URL('http://localhost:1234'+_url).pathname
-    console.timeLog(pathname)
+    const _url = request.url;
+    const queryData = new URL('http://localhost:1234'+_url).searchParams
+    const pathname = new URL('http://localhost:1234'+_url).pathname
+    
     if(pathname ==='/'){
       if (queryData.get('id') ===null){
 
@@ -58,7 +57,7 @@ var app = http.createServer(function(request,response){
             const html = template.html(title,list,
               `<h2>${title}</h2>
               <p>${data}</p>`
-              ,control(title));
+              ,control(topic));
               response.writeHead(200)
               response.end(html)
           })
@@ -115,27 +114,29 @@ var app = http.createServer(function(request,response){
 
     
   } else if(pathname === '/update'){
-    const filterId = path.parse(queryData.get('id')).base
-    fs.readFile(`data/${filterId}`,'utf8',(err,data) =>{
-      fs.readdir('./data',(err,filelist) =>{
-        let title = queryData.get('id');
-        const cleanTitle = sanitizeHtml(title)
-        const cleanData = sanitizeHtml(data)
-        let list = template.list(filelist);
-        let html = template.html(cleanTitle,list,'',`
+    db.query('select * from topic',(err,topics)=>{
+      if(err) throw err
+      db.query(`select * from topic where id=?`,[queryData.get('id')],(err2,topic)=>{
+        if(err2) throw err2
+        const title = topic[0].title;
+        const list = template.list(topics);
+        const data = topic[0].description;
+        const html = template.html(title,list,
+          `
           <form action="http://localhost:1234/update_process" method="post">
-          <input type='hidden' name='id' value="${cleanTitle}">
-          <p><input type='text' name="title" value="${cleanTitle}"></p>
+          <input type='hidden' name='id' value="${topic[0].id}">
+          <p><input type='text' name="title" value="${title}"></p>
           <p>
-            <textarea name="description" id="" cols="30" rows="10" placeholder="description" >${cleanData}</textarea>
+            <textarea name="description" id="" cols="30" rows="10" placeholder="description" >${data}</textarea>
           </p>
           <p>
             <input type="submit" value="수정">
           </p>
           </form>
-        `);
-        response.writeHead(200);
-        response.end(html);
+          `
+          ,'');
+          response.writeHead(200)
+          response.end(html)
       })
     })
   } else if(pathname === '/update_process'){
@@ -145,23 +146,17 @@ var app = http.createServer(function(request,response){
       body += data;
     })
     request.on('end',()=>{
-      let post = new URLSearchParams(body);
-      console.log(post)
-      let id = post.get('id')
-      let title = post.get('title')
-      let description = post.get('description')
-      // const cleanTitle = sanitizeHtml(title)
-      // const cleanData = sanitizeHtml(description)
-      fs.writeFile(`./data/${id}`, description,"utf8", function (err) {
-        fs.rename(`./data/${id}`,`./data/${title}`,(err)=>{
-          if(err){return err}
-          else {console.log('file renamed')}
-        })
+      const post = new URLSearchParams(body);
+      const id = post.get('id')
+      const title = post.get('title')
+      const description = post.get('description')
+      db.query('update topic set title=?, description=?, author_id=1 where id = ?',[title,description,id],(err,result)=>{
+        if(err){console.log(err)}
         response.writeHead(302,{
-          'Location': encodeURI(`/?id=${title}`)
+          'Location': `/?id=${id}`
         })
-        response.end()
-      });
+        response.end();
+      })
     });
   } else if(pathname === '/delete_process'){
     response.writeHead(200);
