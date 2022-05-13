@@ -1,29 +1,6 @@
 var http = require('http');
-var fs = require('fs');
 const template = require('./lib/template.js');
-const path = require('path');
-const sanitizeHtml = require('sanitize-html')
-const mysql = require('mysql')
-
-const db = mysql.createConnection({
-  host:'localhost',
-  user:'nodejs',
-  password:'1234',
-  database:'opentutorials'
-})
-
-db.connect();
-
-function control(topic){
-  return `
-    <a href="/create">create</a>
-    <a href="/update?id=${topic[0].id}">update</a>
-    <form action="delete_process" method="post">
-      <input type='hidden' name='title' value='${topic[0].title}'>
-      <input type='submit' value='delete'>
-    </form>
-    `}
-
+const db = require('./lib/db')
 
 var app = http.createServer(function(request,response){
     const _url = request.url;
@@ -49,15 +26,25 @@ var app = http.createServer(function(request,response){
       }else{
         db.query('select * from topic',(err,topics)=>{
           if(err) throw err
-          db.query(`select * from topic where id=?`,[queryData.get('id')],(err2,topic)=>{
+          db.query(`select * from topic left join author on topic.author_id=author.id where topic.id=?`,[queryData.get('id')],(err2,topic)=>{
             if(err2) throw err2
+            console.log(topic)
             const list = template.list(topics);
             const title = topic[0].title;
             const data = topic[0].description;
             const html = template.html(title,list,
               `<h2>${title}</h2>
-              <p>${data}</p>`
-              ,control(topic));
+              <p>${data}</p>
+              <p>by ${topic[0].name}</p>
+              `
+              ,`
+              <a href="/create">create</a>
+              <a href="/update?id=${queryData.get('id')}">update</a>
+              <form action="delete_process" method="post">
+                <input type='hidden' name='id' value='${queryData.get('id')}'>
+                <input type='submit' value='delete'>
+              </form>
+              `);
               response.writeHead(200)
               response.end(html)
           })
@@ -68,9 +55,9 @@ var app = http.createServer(function(request,response){
   }else if(pathname === '/create'){
     db.query('select * from topic',(err,topics)=>{
       if(err) throw err
-      db.query(`select * from topic where id=?`,[queryData.get('id')],(err2,topic)=>{
-        if(err2) throw err2
-        const title = 'WEB -Create';
+      db.query('select * from author',(err,authors)=>{
+        
+        const title = 'WEB - Create';
         const list = template.list(topics);
         const html = template.html(title,list,`
           <form action="http://localhost:1234/create_process" method="post">
@@ -78,15 +65,17 @@ var app = http.createServer(function(request,response){
           <p>
             <textarea name="description" id="" cols="30" rows="10" placeholder="description"></textarea>
           </p>
+            ${template.authorSelect(authors)}
           <p>
             <input type="submit" value="생성">
           </p>
           </form>
-           `,'');
-          response.writeHead(200)
-          response.end(html)
+            `,'');
+        response.writeHead(200)
+        response.end(html)
       })
     })
+
   }else if(pathname === '/create_process'){
     response.writeHead(200);
     let body = '';
@@ -98,10 +87,11 @@ var app = http.createServer(function(request,response){
       console.log(post)
       const title = post.get('title')
       const description = post.get('description')
+      const authorId= post.get('author')
       db.query(`
       insert into topic (title, description, created, author_id)
        values (?, ?, NOW(), ?)`,
-       [title,description,1],
+       [title,description,authorId],
        (err,result)=>{
         if(err) throw err;
         console.log(result)
@@ -118,25 +108,28 @@ var app = http.createServer(function(request,response){
       if(err) throw err
       db.query(`select * from topic where id=?`,[queryData.get('id')],(err2,topic)=>{
         if(err2) throw err2
-        const title = topic[0].title;
-        const list = template.list(topics);
-        const data = topic[0].description;
-        const html = template.html(title,list,
-          `
-          <form action="http://localhost:1234/update_process" method="post">
-          <input type='hidden' name='id' value="${topic[0].id}">
-          <p><input type='text' name="title" value="${title}"></p>
-          <p>
-            <textarea name="description" id="" cols="30" rows="10" placeholder="description" >${data}</textarea>
-          </p>
-          <p>
-            <input type="submit" value="수정">
-          </p>
-          </form>
-          `
-          ,'');
+        db.query('select * from author',(err,authors)=>{
+          const title = topic[0].title;
+          const list = template.list(topics);
+          const data = topic[0].description;
+          const html = template.html(title,list,
+            `
+            <form action="http://localhost:1234/update_process" method="post">
+            <input type='hidden' name='id' value="${topic[0].id}">
+            <p><input type='text' name="title" value="${title}"></p>
+            <p>
+              <textarea name="description" id="" cols="30" rows="10" placeholder="description" >${data}</textarea>
+            </p>
+              ${template.authorSelect(authors,topic[0].author_Id)}
+            <p>
+              <input type="submit" value="수정">
+            </p>
+            </form>
+            `
+            ,'');
           response.writeHead(200)
           response.end(html)
+        })
       })
     })
   } else if(pathname === '/update_process'){
@@ -150,7 +143,8 @@ var app = http.createServer(function(request,response){
       const id = post.get('id')
       const title = post.get('title')
       const description = post.get('description')
-      db.query('update topic set title=?, description=?, author_id=1 where id = ?',[title,description,id],(err,result)=>{
+      const authorId = post.get('author')
+      db.query('update topic set title=?, description=?, author_id=? where id = ?',[title,description,authorId,id],(err,result)=>{
         if(err){console.log(err)}
         response.writeHead(302,{
           'Location': `/?id=${id}`
@@ -166,15 +160,14 @@ var app = http.createServer(function(request,response){
     })
     request.on('end',()=>{
       let post = new URLSearchParams(body)
-      db.query('delete from topic where id=?',[post.get('id')],(err,result)=>{
+      db.query('DELETE from topic where id=?',[post.get('id')],(err,result)=>{
         if(err){throw err}
         response.writeHead(302,{
           'Location': '/'
         })
         response.end()
       })
-        
-      })
+    })
   } else{
     response.writeHead(404);
     response.end('not found');
