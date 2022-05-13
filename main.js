@@ -166,16 +166,15 @@ var app = http.createServer(function(request,response){
     })
     request.on('end',()=>{
       let post = new URLSearchParams(body)
-      const filterId = path.parse(post.get('title')).base
-      fs.unlink(`data/${filterId}`,(err)=>{
-        if(err) return err
+      db.query('delete from topic where id=?',[post.get('id')],(err,result)=>{
+        if(err){throw err}
         response.writeHead(302,{
           'Location': '/'
         })
         response.end()
       })
-    })
-
+        
+      })
   } else{
     response.writeHead(404);
     response.end('not found');
